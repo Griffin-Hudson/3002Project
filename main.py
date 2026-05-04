@@ -123,6 +123,9 @@ def main():
     (bytes 0, 1, 2, … mod 256) and calls ``host_a.send_message`` to initiate
     the full Layer-2/3/4 transmission to Host B.
     """
+    # Ensure Unicode characters (e.g. →) render correctly on all platforms.
+    sys.stdout.reconfigure(encoding='utf-8')
+
     if len(sys.argv) != 2:
         print("Usage: python main.py <message_size>")
         sys.exit(1)

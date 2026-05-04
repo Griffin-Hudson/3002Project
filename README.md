@@ -90,7 +90,18 @@ Both `Host` and `Router` use **longest-prefix-match**.  The helper `_longest_pre
 
 ## Note on TTL Values in Example Output
 
-The project specification states that `TTL = 100` (Layer 3 header definition) and the router log shows `TTL decremented: 100 → 99`.  The `TTL=4` / `TTL=3` values that appear in some lines of the example output are typographical errors in the specification document.  This implementation uses `TTL = 100` consistently, which is the only value compatible with the `100 → 99` decrement log shown in the same example.
+The example output in the project specification contains a self-contradiction:
+
+- Most log lines show `TTL=4` (sent) and `TTL=3` (received after routing) — consistent with a `DEFAULT_TTL` of **4**.
+- The router's decrement line reads `TTL decremented: 100 → 99` — consistent with a `DEFAULT_TTL` of **100**.
+
+No single `DEFAULT_TTL` value can satisfy both at once.
+
+**What likely happened:** the example was first generated with `DEFAULT_TTL = 4` (a small value convenient for testing TTL-expiry behaviour). The value was later changed to `100` to match the protocol definition ("TTL (1 byte) → 100"), but only the router's `TTL decremented` line was updated in the expected output — the surrounding "packet received" lines that incidentally display the TTL value were missed.
+
+**What this implementation does:** `DEFAULT_TTL = 100` throughout, producing `TTL=100` on send and `TTL=99` after the router decrements. This is the only interpretation consistent with:
+1. The spec's own protocol definition ("TTL (1 byte) → 100").
+2. The router log line `TTL decremented: 100 → 99` shown in the same example.
 
 ---
 
