@@ -12,18 +12,15 @@ import struct
 # ---------------------------------------------------------------------------
 
 def compute_checksum(data):
-    """
-    16-bit one's-complement Internet checksum (RFC 1071).
-    Odd-length input is zero-padded before summing.
-    """
+    """16-bit one's-complement Internet checksum (RFC 1071)."""
     if len(data) % 2:
-        data += b'\x00'
+        data += b'\x00'             # pad to even length for 16-bit word alignment
     total = 0
     for i in range(0, len(data), 2):
         word = (data[i] << 8) | data[i + 1]
         total += word
-    while total >> 16:
-        total = (total & 0xFFFF) + (total >> 16)
+        while total >> 16:          # fold carry back into low 16 bits after each addition
+            total = (total & 0xFFFF) + (total >> 16)
     return (~total) & 0xFFFF
 
 
