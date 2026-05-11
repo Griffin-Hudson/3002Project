@@ -1,15 +1,8 @@
 """
-protocol.py
-===========
 Header classes for Layers 2, 3, and 4, plus a few address/checksum helpers.
 """
-
 import struct
 
-
-# ---------------------------------------------------------------------------
-# Checksum and address helpers
-# ---------------------------------------------------------------------------
 
 def compute_checksum(data):
     """16-bit one's-complement Internet checksum (RFC 1071)."""
@@ -44,14 +37,9 @@ def bytes_to_mac(raw):
     return ':'.join(f'{b:02X}' for b in raw)
 
 
-# ---------------------------------------------------------------------------
-# Layer 4 – Transport (UDP-like segment with rdt2.2 alternating-bit support)
-# ---------------------------------------------------------------------------
-
 class Layer4Segment:
     """
     UDP-like transport segment.
-
     Header layout (10 bytes, big-endian):
         0-1  src_port   source port number
         2-3  dst_port   destination port number
@@ -59,7 +47,6 @@ class Layer4Segment:
         6-7  checksum   16-bit error-detection checksum
         8    seg_type   0 = DATA, 1 = ACK
         9    seq_num    alternating-bit sequence number (0 or 1)
-
     Followed by variable-length data (empty for ACK segments).
     """
 
@@ -95,7 +82,7 @@ class Layer4Segment:
         return compute_checksum(self._checksum_payload()) == self.checksum
 
     def to_bytes(self):
-        """Serialise the segment (header + data) to bytes."""
+        """Serialise the segment to bytes."""
         header = struct.pack(self.HEADER_FORMAT,
                              self.src_port,
                              self.dst_port,
@@ -107,7 +94,7 @@ class Layer4Segment:
 
     @classmethod
     def from_bytes(cls, raw):
-        """Reconstruct a Layer4Segment from raw bytes."""
+        """Deserialise a Layer4Segment from raw bytes."""
         (src_port, dst_port, length,
          checksum, seg_type, seq_num) = struct.unpack(
              cls.HEADER_FORMAT, raw[:cls.HEADER_SIZE])
@@ -118,21 +105,15 @@ class Layer4Segment:
         return seg
 
 
-# ---------------------------------------------------------------------------
-# Layer 3 – Network (IP-like packet)
-# ---------------------------------------------------------------------------
-
 class Layer3Packet:
     """
     IP-like network packet.
-
     Header layout (12 bytes, big-endian):
         0-3   src_ip        source IP address
         4-7   dst_ip        destination IP address
         8     ttl           time-to-live (decremented at each router)
         9     protocol      upper-layer protocol (17 = UDP-like)
         10-11 total_length  header + payload size in bytes
-
     Followed by a variable-length payload (serialised Layer4Segment).
     """
 
@@ -147,13 +128,13 @@ class Layer3Packet:
         self.total_length = self.HEADER_SIZE + len(self.payload)
 
     def to_bytes(self):
-        """Serialise the packet (header + payload) to bytes."""
+        """Serialise the packet to bytes."""
         fixed = struct.pack('!BBH', self.ttl, self.protocol, self.total_length)
         return ip_to_bytes(self.src_ip) + ip_to_bytes(self.dst_ip) + fixed + self.payload
 
     @classmethod
     def from_bytes(cls, raw):
-        """Reconstruct a Layer3Packet from raw bytes."""
+        """Deserialise a Layer3Packet from raw bytes."""
         src_ip = bytes_to_ip(raw[0:4])
         dst_ip = bytes_to_ip(raw[4:8])
         ttl, protocol, total_length = struct.unpack('!BBH', raw[8:12])
@@ -163,19 +144,13 @@ class Layer3Packet:
         return pkt
 
 
-# ---------------------------------------------------------------------------
-# Layer 2 – Data Link (Ethernet-like frame)
-# ---------------------------------------------------------------------------
-
 class Layer2Frame:
     """
     Ethernet-like data-link frame.
-
     Header layout (14 bytes, big-endian):
         0-5   dst_mac     destination MAC address
         6-11  src_mac     source MAC address
         12-13 ether_type  EtherType (0x0800 = IPv4)
-
     Followed by a variable-length payload (serialised Layer3Packet).
     """
 
@@ -188,7 +163,7 @@ class Layer2Frame:
         self.payload    = payload if payload else b''
 
     def to_bytes(self):
-        """Serialise the frame (header + payload) to bytes."""
+        """Serialise the frame to bytes."""
         return (mac_to_bytes(self.dst_mac)
                 + mac_to_bytes(self.src_mac)
                 + struct.pack('!H', self.ether_type)
@@ -196,7 +171,7 @@ class Layer2Frame:
 
     @classmethod
     def from_bytes(cls, raw):
-        """Reconstruct a Layer2Frame from raw bytes."""
+        """Deserialise a Layer2Frame from raw bytes."""
         dst_mac    = bytes_to_mac(raw[0:6])
         src_mac    = bytes_to_mac(raw[6:12])
         ether_type = struct.unpack('!H', raw[12:14])[0]

@@ -1,13 +1,9 @@
 """
-devices.py
-==========
 Host and Router classes implementing the Layer 2/3/4 network simulation.
-
 Both devices communicate through direct Python method calls rather than real
 sockets.  Routing uses longest-prefix-match; next_hop=None means the route is
 directly connected (dst_ip is used as the next-hop address in that case).
 """
-
 from protocol import (Layer2Frame, Layer3Packet, Layer4Segment)
 from config import (
     ETHERTYPE_IPV4, IP_PROTOCOL_UDP, DEFAULT_TTL,
@@ -15,16 +11,12 @@ from config import (
     SRC_PORT, DST_PORT,
 )
 
-
-# ---------------------------------------------------------------------------
-# Routing helpers (module-private)
-# ---------------------------------------------------------------------------
+# Routing helpers
 
 def _ip_to_int(ip):
     """Dotted-decimal IP string to an unsigned 32-bit integer."""
     parts = [int(x) for x in ip.split('.')]
     return (parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3]
-
 
 def _ip_in_network(ip, network, mask):
     """True if ip falls within network/mask."""
@@ -33,15 +25,12 @@ def _ip_in_network(ip, network, mask):
     msk_int = _ip_to_int(mask)
     return (ip_int & msk_int) == (net_int & msk_int)
 
-
 def _prefix_length(mask):
     """Number of set bits in a dotted-decimal subnet mask."""
     return bin(_ip_to_int(mask)).count('1')
 
-
 def _longest_prefix_match(routing_table, dst_ip):
     """Longest-prefix-match lookup; returns (next_hop, interface) or None.
-
     A next_hop of None signals a directly connected network — the caller
     should substitute dst_ip as the next-hop address in that case.
     """
@@ -55,19 +44,12 @@ def _longest_prefix_match(routing_table, dst_ip):
                 best_entry  = (next_hop, interface)
     return best_entry
 
-
-# ---------------------------------------------------------------------------
-# Host
-# ---------------------------------------------------------------------------
-
 class Host:
     """End-host with a full Layer 2/3/4 stack.
-
     L4 uses rdt2.2 alternating-bit reliable transfer with UDP-like checksums.
     L3 does IP-like encapsulation with longest-prefix-match routing.
     L2 does Ethernet-like framing, static ARP resolution, and source-MAC learning.
     """
-
     def __init__(self, name, ip, mac):
         self.name          = name
         self.ip            = ip
@@ -90,21 +72,17 @@ class Host:
         self._pending_data_dst_ip  = None
         self._pending_data_segment = None
 
-    # --- configuration ---
-
     def set_uplink(self, device, remote_interface):
         """Wire this host's single uplink to device."""
         self.uplink = (device, remote_interface)
 
     def add_route(self, network, mask, next_hop, interface='eth0'):
-        """Append an entry to the routing table."""
+        """Add a routing table entry."""
         self.routing_table.append((network, mask, next_hop, interface))
 
     def add_arp_entry(self, ip, mac):
-        """Add a static ARP entry (ip -> mac)."""
+        """Map ip to mac in the ARP table."""
         self.arp_table[ip] = mac
-
-    # --- application layer ---
 
     def send_message(self, dst_ip, data):
         """Slice data into MAX_SEGMENT_SIZE chunks and deliver each via rdt2.2."""
@@ -113,11 +91,8 @@ class Host:
         for chunk in chunks:
             self._layer4_send_data(dst_ip, SRC_PORT, DST_PORT, chunk)
 
-    # --- Layer 4 (Transport) ---
-
     def _layer4_send_data(self, dst_ip, src_port, dst_port, data):
         """Build a DATA segment, compute its checksum, and send it down the stack.
-
         Because the simulation is synchronous the full round-trip (DATA + ACK)
         completes inside _layer3_send, so send_seq is updated before this returns.
         """
@@ -147,11 +122,10 @@ class Host:
 
     def _layer4_receive(self, seg, src_ip, dst_ip):
         """rdt2.2 receive handler for both DATA and ACK segments.
-
         DATA (receiver): verify checksum -> deliver in-order data and ACK, or
                          replay last ACK for duplicate/corrupt segments.
-        ACK  (sender):   advance send_seq on correct ACK; retransmit on wrong
-                         or corrupt ACK.
+        ACK (sender): advance send_seq on correct ACK; retransmit on wrong
+                      or corrupt ACK.
         """
         print()
         print(f"{self.name}: Layer 4: Segment received from Network Layer")
@@ -189,7 +163,7 @@ class Host:
                 self.expected_seq = 1 - self.expected_seq
             else:
                 # duplicate or out-of-order — re-send last ACK
-                if self.last_ack_seq is not None:
+                if self.last_ack_seq is not None: # None only before first delivery, drop silently
                     self._layer4_send_ack(src_ip,
                                           seg.dst_port, seg.src_port,
                                           self.last_ack_seq)
@@ -207,8 +181,6 @@ class Host:
                 if self._pending_data_dst_ip is not None and self._pending_data_segment is not None:
                     self._layer3_send(self.ip, self._pending_data_dst_ip,
                                       self._pending_data_segment)
-
-    # --- Layer 3 (Network) ---
 
     def _layer3_send(self, src_ip, dst_ip, seg):
         """Wrap seg in an IP packet, look up the route, and pass to Layer 2."""
@@ -252,8 +224,6 @@ class Host:
         else:
             print(f"{self.name}: Layer 3: Destination not local. Packet dropped.")
 
-    # --- Layer 2 (Data Link) ---
-
     def _layer2_send(self, pkt, next_hop_ip):
         """ARP-resolve next_hop_ip, build a frame, and transmit over the uplink."""
         print()
@@ -294,17 +264,11 @@ class Host:
                 self._layer3_receive(pkt)
 
 
-# ---------------------------------------------------------------------------
-# Router
-# ---------------------------------------------------------------------------
-
 class Router:
     """Layer 2/3 router — no transport layer.
-
     Receives frames on any interface, decrements TTL, performs longest-prefix-
     match routing, and forwards packets out the appropriate outgoing interface.
     """
-
     def __init__(self, name):
         self.name          = name
         self.interfaces    = {}  # {iface_name: {ip, mac, uplink}}
@@ -312,26 +276,22 @@ class Router:
         self.arp_table     = {}  # next_hop_ip -> MAC string
         self.mac_table     = {}  # {iface_name: {src_mac: iface_name}}
 
-    # --- configuration ---
-
     def add_interface(self, name, ip, mac):
-        """Register a named interface with the given IP and MAC."""
+        """Register a named interface on the router."""
         self.interfaces[name] = {'ip': ip, 'mac': mac, 'uplink': None}
         self.mac_table[name]  = {}
 
     def set_uplink(self, iface_name, device, remote_interface):
-        """Attach iface_name to a neighbouring device."""
+        """Connect iface_name to a neighbouring device."""
         self.interfaces[iface_name]['uplink'] = (device, remote_interface)
 
     def add_route(self, network, mask, next_hop, interface):
-        """Append an entry to the routing table."""
+        """Add a routing table entry."""
         self.routing_table.append((network, mask, next_hop, interface))
 
     def add_arp_entry(self, ip, mac):
-        """Add a static ARP entry (ip -> mac)."""
+        """Map ip to mac in the ARP table."""
         self.arp_table[ip] = mac
-
-    # --- Layer 2 (Data Link) ---
 
     def receive_frame(self, frame, interface):
         """Learn source MAC on interface, then route the IP packet via Layer 3."""
@@ -374,11 +334,8 @@ class Router:
             device, remote_iface = uplink
             device.receive_frame(frame, remote_iface)
 
-    # --- Layer 3 (Network) ---
-
     def _layer3_receive(self, pkt, in_iface):
         """Receive a packet from L2, decrement TTL, and route it out via L2.
-
         Drops the packet silently if TTL hits zero after decrement.
         """
         print()
