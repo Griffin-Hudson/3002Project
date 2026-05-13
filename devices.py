@@ -64,7 +64,7 @@ class Host:
         self.send_seq      = 0
         # rdt2.2 receiver state
         self.expected_seq  = 0
-        self.last_ack_seq  = None  # seq of last ACK sent; replayed on duplicate/corrupt DATA
+        self.last_ack_seq  = 1     # last ACK sent; ACK1 is the initial ACK for "expecting DATA0"
 
         self.received_data = []    # application-layer receive buffer
 
@@ -132,7 +132,7 @@ class Host:
 
         if not seg.verify_checksum():
             print(f"{self.name}: Layer 4: Segment discarded due to checksum error")
-            if seg.seg_type == TYPE_DATA and self.last_ack_seq is not None:
+            if seg.seg_type == TYPE_DATA:
                 # rdt2.2 receiver: re-send last ACK so the sender retransmits
                 self._layer4_send_ack(src_ip,
                                       seg.dst_port, seg.src_port,
@@ -156,17 +156,16 @@ class Host:
                       f"Application Layer. Data size={len(seg.data)}")
                 self.received_data.append(seg.data)
                 self.last_ack_seq = seg.seq_num
+                self.expected_seq = 1 - self.expected_seq
                 # ports are swapped so the ACK flows back to the original sender
                 self._layer4_send_ack(src_ip,
                                       seg.dst_port, seg.src_port,
                                       seg.seq_num)
-                self.expected_seq = 1 - self.expected_seq
             else:
                 # duplicate or out-of-order — re-send last ACK
-                if self.last_ack_seq is not None: # None only before first delivery, drop silently
-                    self._layer4_send_ack(src_ip,
-                                          seg.dst_port, seg.src_port,
-                                          self.last_ack_seq)
+                self._layer4_send_ack(src_ip,
+                                      seg.dst_port, seg.src_port,
+                                      self.last_ack_seq)
 
         elif seg.seg_type == TYPE_ACK:
             print(f"{self.name}: Layer 4: ACK received: seq={seg.seq_num}")
@@ -303,6 +302,10 @@ class Router:
             self.mac_table[interface][src_mac] = interface
             print(f"{self.name}: Layer 2: Source MAC learned: "
                   f"{src_mac} on {interface}")
+
+        iface_mac = self.interfaces[interface]['mac']
+        if frame.dst_mac not in (iface_mac, 'FF:FF:FF:FF:FF:FF'):
+            return
 
         if frame.ether_type == ETHERTYPE_IPV4:
             print(f"{self.name}: Layer 2: Packet delivered to Network Layer")

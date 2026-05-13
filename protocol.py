@@ -95,9 +95,13 @@ class Layer4Segment:
     @classmethod
     def from_bytes(cls, raw):
         """Deserialise a Layer4Segment from raw bytes."""
+        if len(raw) < cls.HEADER_SIZE:
+            raise ValueError("Layer 4 segment is shorter than the header")
         (src_port, dst_port, length,
          checksum, seg_type, seq_num) = struct.unpack(
              cls.HEADER_FORMAT, raw[:cls.HEADER_SIZE])
+        if length != len(raw):
+            raise ValueError("Layer 4 segment length field does not match payload size")
         data         = raw[cls.HEADER_SIZE:]
         seg          = cls(src_port, dst_port, seg_type, seq_num, data)
         seg.length   = length
@@ -135,9 +139,13 @@ class Layer3Packet:
     @classmethod
     def from_bytes(cls, raw):
         """Deserialise a Layer3Packet from raw bytes."""
+        if len(raw) < cls.HEADER_SIZE:
+            raise ValueError("Layer 3 packet is shorter than the header")
         src_ip = bytes_to_ip(raw[0:4])
         dst_ip = bytes_to_ip(raw[4:8])
         ttl, protocol, total_length = struct.unpack('!BBH', raw[8:12])
+        if total_length != len(raw):
+            raise ValueError("Layer 3 packet length field does not match payload size")
         payload          = raw[12:]
         pkt              = cls(src_ip, dst_ip, ttl, protocol, payload)
         pkt.total_length = total_length
@@ -172,6 +180,8 @@ class Layer2Frame:
     @classmethod
     def from_bytes(cls, raw):
         """Deserialise a Layer2Frame from raw bytes."""
+        if len(raw) < cls.HEADER_SIZE:
+            raise ValueError("Layer 2 frame is shorter than the header")
         dst_mac    = bytes_to_mac(raw[0:6])
         src_mac    = bytes_to_mac(raw[6:12])
         ether_type = struct.unpack('!H', raw[12:14])[0]
